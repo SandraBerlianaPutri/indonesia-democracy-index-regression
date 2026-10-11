@@ -1,0 +1,272 @@
+---
+title: "Project Regresi Linear Berganda"
+author: "Sandra Berliana Putri - G1401221021"
+date: "2024-04-21"
+output: html_document
+---
+```{r}
+library(readxl)
+library(dplyr)
+library(lmtest)
+library(GGally)
+library(randtests)
+library(nortest)
+library(MASS)
+library(car)
+library(olsrr)
+library(tidyverse)
+```
+
+# Data
+Menggunakan data dengan peubah sebagai berikut : <br>
+$Y$ = Indeks Demokrasi <br>
+$X_1$= Indeks Kemerdekaan Pers <br>
+$X_2$ = Jumlah Ormas/LSM  <br>
+$X_3$ = Jumlah Aturan Yang Membatasi Kebebasan <br>
+$X_4$ = Persentase Perempuan di DPRD  <br>
+$X_5$ = IPM  <br>
+$X_6$ = PDRB (Ribu Rupiah)  <br>
+$X_7$ = Indeks Keterbukaan Informasi Publik  <br>
+$X_8$ = Indeks Pembangunan Gender  <br>
+$X_9$ = Nilai Integritas Pemerintah
+
+```{r}
+Data_Anreg <- read_excel("C:\\Users\\ASUS\\Downloads\\Data_Anreg_Kel 9.xlsx")
+head(Data_Anreg)
+```
+
+## Model Awal 
+```{r}
+model1<- lm(Y~. , data= Data_Anreg)
+summary(model1)
+plot(model1)
+
+```
+Didapatkan model regresi sebagai berikut :
+$$ \hat Y = -4.220+0.432X_1+0.005X_2-0.047X_3+0.0133X_4-0.42X_5-0.000004X_6+0.119X_7+0.353X_8+0.198X_9 $$
+Namun, model tersebut belum dapat digunakan karena belum dilakukan pengujian multikolinearitas, asumsi dan kriteria model terbaik.
+
+
+# Eksplorasi Data
+
+```{r}
+summary(Data_Anreg$Y)
+```
+
+```{r}
+boxplot(Data_Anreg$Y, col = "lightblue")
+```
+
+
+```{r}
+ggpairs(Data_Anreg,
+        upper = list(continuous = wrap('cor', size = 2)),
+        title = "Matriks Scatterplot dan Korelasi")
+```
+
+
+Pada matriks diatas tanda * artinya nilai p-value < 0.05, yang artinya terdapat nilai korelasi antara 2 peubah. Pada matriks tersebut, peubah-peubah yang memiliki korelasi terhadap respon Y adalah X1, X2, X5, X7, X8, X9. Sedangkan peubah X3, X4, X6 tidak berkorelasi signifikan dengan Y sehingga dapat dikeluarkan dari model. X8 juga dapat dikeluarkan dari model dikarenakan korelasi yang tinggi dengan peubah X5.
+
+```{r}
+model2= lm(Y~X1+X2+X5+X7+X9 , data=Data_Anreg)
+summary(model2)
+```
+
+
+
+# Pengujian Multikolinearitas
+```{r}
+vif(model2)
+```
+Melalui uji vif didapatkan nilai VIF dari tiap peubah yang tersisa kurang dari 10 sehingga dapat disimpulkan bahwa tidak terdapat multikolinearitas
+
+# Pendeteksian pencilan, leverage, dan amatan berpengaruh
+```{r}
+index <- c(1:34)
+ri <- studres(model2)
+DFFITSi <- dffits(model2)
+hii <- hatvalues(model2)
+hasil <- data.frame(index,ri,DFFITSi,hii); round(hasil,4)
+for (i in 1:dim(hasil)[1]){
+  absri <- abs(hasil$ri)
+  pencilan <- which(absri > 2)
+}
+pencilan
+
+titik_leverage <- vector("list", dim(hasil)[1])
+for (i in 1:dim(hasil)[1]) {
+  cutoff <- 2 * 6/ 34
+  titik_leverage[[i]] <- which(hii > cutoff)
+}
+
+
+leverages <- unlist(titik_leverage)
+titik_leverage <- sort(unique(leverages))
+titik_leverage
+
+amatan_berpengaruh <- vector("list", dim(hasil)[1])
+for (i in 1:dim(hasil)[1]) {
+  cutoff <- 2 * sqrt((6/ 34))
+  amatan_berpengaruh[[i]] <- which(abs(DFFITSi) > cutoff)
+}
+berpengaruh <- unlist(amatan_berpengaruh)
+amatan_berpengaruh <- sort(unique(berpengaruh))
+amatan_berpengaruh
+```
+
+```{r}
+ols_plot_resid_lev(model2)
+```
+
+
+Dari proses analisis sebelumnya didapatkan 3 buah pencilan yaitu amatan ke-4, ke-15, dan ke-32(Riau, Jawa Timur, Maluku Utara). Terdapat pula 3 buah leverage yaitu amatan ke-12, ke-32, dan ke-34 (Jawa Barat, Maluku Utara, dan Papua).
+dan 4 buah amatan berpengaruh yaittu amatan ke-4, ke-12, ke-15, dan amatan ke-32. Saat dicobakan nilai adj R-square tertinggi didapatkan dengan menghapus amatan ke-4, ke-12, dan ke-15 
+
+
+```{r}
+# model dengan mengeluarkan amatan ke-4, ke-12 dan ke-15
+db1= Data_Anreg[-c(34),]
+db= Data_Anreg[-c(4,15,12),]
+model3 = lm(Y~X1+X2+X5+X7+X9 , data=db)
+summary(model3)
+anova(model3)
+```
+
+
+# Uji asumsi
+Pengujian asumsi dilakukan dengan metode non-formal menggunakan visualisasi dan metode formal. Pada analisis regresi terdapat beberapa asumsi yang harus dipenuhi yaitu : <br>
+
+
+## Nilai Harapan sisaan 0 (E[e]=0)
+H0: $E[\epsilon]=0$
+
+H1: $E[\epsilon]\not=0$
+
+
+### Non-Formal
+```{r}
+plot(model3,1)
+```
+
+Terlihat sisaan menyebar disekitar 0 sehingga nilai harapan sisaan 0
+
+
+### Formal
+```{r}
+t.test(model3$residuals,mu = 0,conf.level = 0.95)
+```
+
+Uji-T menghasilkan p-value 1 > dibanding 0.05 sehingga pada taraf 5% H0 tidak ditolak. Asumsi nilai harapan sisaan 0 terpenuhi.
+
+
+## Ragam sisaan homogen (Homoscedasticity)
+H0: $Var[\epsilon]=\sigma^2 I$
+
+H1: $Var[\epsilon]\not=\sigma^2 I$
+
+
+### Non-Formal
+```{r}
+plot(model3,1)
+```
+
+Lebar pita hampir sama untuk setiap dugaan sehingga asumsi kehomogenan ragam terpenuhi
+
+
+### Formal
+```{r}
+bptest(model3)
+```
+Melalui uji Breusch-Pagan didapatkan p-value = 0.6944 > 0.05 sehingga pada taraf 5% H0 tidak ditolak. Asumsi Homoscedasticity terpenuhi.
+
+
+## Sisaan saling bebas/ tidak ada autokorelasi
+H0: $E[\epsilon_i , \epsilon_j]=0$
+
+H1: $E[\epsilon_i , \epsilon_j]\not=0$
+
+
+### Non-Formal
+```{r}
+plot(x = 1:dim(db)[1],
+     y = model3$residuals,
+     type = 'b', 
+     ylab = "Residuals",
+     xlab = "Observation")
+```
+
+Melalui plot sisaan dan urutan dapat dilihat bahwa data menyebar acak dan tidak berpola. Sehingga tidak terdapat autokorelasi pada data
+
+
+### Formal
+```{r}
+dwtest(model3)
+```
+Pengujian autokorelasi menggunakan Uji Durbin-Watson menghasilkan nilai p-value 0.1119 > 0.05 sehingga pada taraf 5% tak tolak H0. Asumsi sisaan saling bebas terpenuhi.
+
+
+## Sisaan menyebar normal
+H0: Sisaan menyebar normal
+
+H1: Sisaan tidak menyebar normal
+
+
+### Non-Formal
+```{r}
+plot(model3,2)
+```
+
+Melalui grafik tersebut terlihat data mengikuti garis, sehingga asumsi kenormalan sisaan terpenuhi.
+
+
+### Formal
+```{r}
+ks.test(model3$residuals, "pnorm", mean=mean(model3$residuals), sd=sd(model3$residuals))
+```
+
+
+
+
+ 
+# Pemilihan model terbaik
+
+## Forward
+```{r}
+step(model3,direction="forward")
+```
+
+
+## Backward
+```{r}
+step(model3,direction="backward")
+```
+
+## Stepwise
+```{r}
+step(model3,direction="both")
+```
+
+
+```{r}
+best <- ols_step_best_subset(model3)
+best
+```
+Metode backward, stepwise dan best subtest regression menghasilkan peubah penjelas yang sama sebagai model terbaik yaitu X1, X2, X5, X7 sedangkan metode forward X9 tetap dimasukkan. namun berdasarkan hasil dari best subtest regression kombinasi prediktor dengan nilai adj. R-square tertinggi adalah model dengan 4 peubah penjelas yaitu X1, X2, X5, X7. sehingga didapatkan model
+$$ \hat Y = -35.84+0.657X_1+0.008X_2+0.613X_5+0.213X_7 $$
+
+```{r}
+model4=lm(formula = Y ~ X1 + X2 + X5 + X7, data = db)
+summary(model4)
+t.test(model4$residuals,mu = 0,conf.level = 0.95)
+bptest(model4)
+dwtest(model4)
+ks.test(model4$residuals, "pnorm", mean=mean(model4$residuals), sd=sd(model4$residuals))
+
+anova(model4)
+
+```
+
+Pengujian asumsi kembali model terbaik didapatkan bahwa keseluruhan asumsi terpenuhi dengan nilai p-value > 0.05.
+
+
+Untuk pengujian kelayakan model sendiri melalui uji F-Simultan dan uji t-parsial. Uji f- simultan mengahsilkan nilai F- statistik dari model sebesar 26.48 dengan p-value $7.746\times 10^{-9}  $ dan untuk uji t parsial didapatkan nilai intersep, X1, X2, X5 yang signifikan pada taraf 5% sedangkan X7 tidak signifikan.
